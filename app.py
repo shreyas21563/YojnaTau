@@ -201,11 +201,14 @@ if "messages" not in st.session_state:
             "1. Role: Answer as an expert in Haryana Government Schemes. "
             "2. Content: Provide accurate and up-to-date information about government schemes, eligibility criteria, benefits, required documents, application process, and relevant timelines. "
             "3. User Question: The user's last message is their query. "
-            "4. Language: Reply in the same language as the user's query (Hindi, English, or Hinglish). "
+            "4. Language: Reply in the same language as the user's query: (Hindi, English). "
             "5. Tone: Use simple, clear, and friendly language. "
             "6. If unsure: Politely say you are unsure. Do not guess or make up information."
         )
     })
+if "suggestion_clicked" not in st.session_state:
+    st.session_state["suggestion_clicked"] = False
+
 
 for msg in st.session_state.messages:
     if msg["role"] == "system":
@@ -213,7 +216,7 @@ for msg in st.session_state.messages:
     role_class = f"chat-message {msg['role']}"
     st.markdown(f"<div class='{role_class}'>{msg['content']}</div>", unsafe_allow_html=True)
 
-if prompt := st.chat_input(placeholder="Ask me something"):
+def processing(prompt):
     st.session_state.messages.append({"role": "user", "content": prompt})
     role_class = f"chat-message user"
     st.markdown(f"<div class='{role_class}'>{prompt}</div>", unsafe_allow_html=True)
@@ -229,10 +232,68 @@ if prompt := st.chat_input(placeholder="Ask me something"):
     search_agent = initialize_agent(
         [search], llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, handle_parsing_errors=True
     )
-    # with st.chat_message("assistant", avatar="🧐", ):
+
     st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
     response = search_agent.run(st.session_state.messages, callbacks=[st_cb])
     st.session_state.messages.append({"role": "assistant", "content": response})
     role_class = f"chat-message assistant"
     st.markdown(f"<div class='{role_class}'>{response}</div>", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+div.stButton > button {
+    background: linear-gradient(135deg, #00B4DB, #FF8C00);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: bold;
+    transition: background 0.4s ease, transform 0.2s ease;
+    box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+div.stButton > button:hover {
+    background: linear-gradient(135deg, #00A6C1, #FF9933);
+    color: white !important;  /* Fixes the red hover text */
+    transform: scale(1.04);
+    cursor: pointer;
+}
+</style>
+
+
+""", unsafe_allow_html=True)
+
+st.markdown("""
+    <style>
+    .suggestion-container {
+        margin-top: 200px;  /* adjust this value as needed */
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+
+suggestions_placeholder = st.empty()
+with suggestions_placeholder.container():
+    st.markdown('<div class="suggestion-container">', unsafe_allow_html=True)
+    cols = st.columns(3)
+    for idx, suggestion in enumerate(["What is the eligibilty criterion of Widow Pension Scheme?", "राजीव गांधी परिवार बीमा योजना क्या है?", "परिवार पहचान पत्र के लिए आवश्यक दस्तावेज़ क्या हैं?"]):
+        if cols[idx].button(suggestion, key=f"suggestion_{suggestion}"):
+            st.session_state.suggestion_clicked = True
+            st.session_state.clicked_prompt = suggestion
+    cols = st.columns(3)
+    if cols[1].button("What is Old Age Samman Allowance?", key=f"suggestion_{"What is Old Age Samman Allowance?"}"):
+        st.session_state.suggestion_clicked = True
+        st.session_state.clicked_prompt = "What is Old Age Samman Allowance?"
+    st.markdown('</div>', unsafe_allow_html=True)
+
+if st.session_state.get("suggestion_clicked", False):
+    suggestions_placeholder.empty()
+    processing(st.session_state.clicked_prompt)
+    st.session_state.suggestion_clicked = False
+if prompt := st.chat_input(placeholder="Ask me something"):
+    suggestions_placeholder.empty()
+    processing(prompt)
+
+
 
