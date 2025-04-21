@@ -2,12 +2,14 @@ import os
 import streamlit as st
 import base64
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.tools import DuckDuckGoSearchRun
 from langchain.agents import initialize_agent, AgentType
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from streamlit_oauth import OAuth2Component
 from langdetect import detect
 from langchain_community.tools import TavilySearchResults
+from langchain.tools import Tool
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_astradb import AstraDBVectorStore
 
 def img_to_base64(image_path):
     with open(image_path, "rb") as img_file:
@@ -22,13 +24,18 @@ st.set_page_config(
 
 GEMINI_API_KEY = st.secrets["api_keys"]["GEMINI_API_KEY"]
 TAVILY_API_KEY = st.secrets["api_keys"]["TAVILY_API_KEY"]
+ASTRADB_API_ENDPOINT = st.secrets["api_keys"]["ASTRADB_API_ENDPOINT"]
+ASTRADB_TOKEN = st.secrets["api_keys"]["ASTRADB_TOKEN"]
 os.environ["TAVILY_API_KEY"] = TAVILY_API_KEY
+os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
 AUTHORIZATION_URL = st.secrets["google_auth"]["auth_uri"]
 TOKEN_URL = st.secrets["google_auth"]["token_uri"]
 CLIENT_ID = st.secrets["google_auth"]["client_id"]
 CLIENT_SECRET = st.secrets["google_auth"]["client_secret"]
 REDIRECT_URI = st.secrets["google_auth"]["redirect_uri"]
 SCOPE = "openid email profile"
+
+
 
 logo_base64 = img_to_base64("img/logo.png")
 bg_base64 = img_to_base64("img/background.png")
@@ -159,7 +166,7 @@ page_bg_img = f"""
 
     /* Override for textarea styling */
     div[data-testid="stChatInput"] textarea {{
-        background-color: rgba(255, 255, 255, 1) !important;
+        background-color: #FFE5B4 !important;
         color: #ff6600 !important;
         border-radius: 18px !important;
         padding: 12px !important;
@@ -168,7 +175,7 @@ page_bg_img = f"""
 
     /* Override for button styling */
     div[data-testid="stChatInput"] button {{
-        background-color: #003366 !important;
+        background-color: #58A636 !important;
         color: white !important;
         border-radius: 50% !important;
         padding: 0.5rem !important;
@@ -176,12 +183,12 @@ page_bg_img = f"""
 
     /* Background for full wrapper element using partial class match */
     div[class*="st-bb"] {{
-        background-color: rgba(255, 255, 255, 1) !important;
+        background-color: #FFE5B4 !important;
     }}
     
     /* If the wrapper has even deeper nesting, increase specificity */
     div[data-testid="stChatInput"] > div[class*="st-bb"] {{
-        background-color: rgba(255, 255, 255, 1) !important;
+        background-color: #FFE5B4 !important;
     }}
 
     /* Optional: Transparent chat container backgrounds */
@@ -190,8 +197,8 @@ page_bg_img = f"""
     }}
 
     div[class="st-emotion-cache-x1bvup e1togvvn1"] {{
-        background-color: rgba(255, 255, 255, 1);
-    }}
+        background-color: #FFE5B4;
+    }}  
 
     </style>
 """
@@ -291,6 +298,28 @@ if 'token' in st.session_state:
         role_class = f"chat-message {msg['role']}"
         st.markdown(f"<div class='{role_class}'>{msg['content']}</div>", unsafe_allow_html=True)
 
+    def retrieval_tool_fn(query):
+        # convert the string to english
+        #skip for now
+        embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/text-embedding-004",
+            task_type="semantic_similarity"
+        )
+        db = AstraDBVectorStore(
+            embedding=embeddings,
+            collection_name="Yojna_Tau",
+            token=ASTRADB_TOKEN,
+            api_endpoint=ASTRADB_API_ENDPOINT,
+            autodetect_collection=True,
+        )
+        def semantic_search_func(query: str):
+            results = db.similarity_search(query, k=5)
+            if not results:
+                return "No matching information found."
+            return "\n\n".join(doc.page_content for doc in results)
+        
+        return semantic_search_func(query)
+
     def processing(prompt):
         language = detect(prompt)
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -310,8 +339,13 @@ if 'token' in st.session_state:
             include_raw_content=True,
             include_images=True,
         )
+        retrieval_tool = Tool(
+            name="RAG",
+            func=retrieval_tool_fn,
+            description="Useful for fetching Haryana government scheme documents based on a query."
+        )
         search_agent = initialize_agent(
-            [search], llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, handle_parsing_errors=True
+            [search, retrieval_tool], llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, handle_parsing_errors=True
         )
 
         st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
@@ -332,7 +366,7 @@ if 'token' in st.session_state:
     st.markdown("""
     <style>
     div.stButton > button {
-        background: linear-gradient(135deg, #00B4DB, #FF8C00);
+        background: linear-gradient(135deg, #FF8C00, #58A636);
         color: white;
         border: none;
         padding: 10px 20px;
@@ -372,7 +406,7 @@ if 'token' in st.session_state:
                 st.session_state.suggestion_clicked = True
                 st.session_state.clicked_prompt = suggestion
         cols = st.columns(3)
-        if cols[1].button("What is Old Age Samman Allowance?", key=f"suggestion_{"What is Old Age Samman Allowance?"}"):
+        if cols[1].button("What is Old Age Samman Allowance?", key=f"suggestion_What is Old Age Samman Allowance?"):
             st.session_state.suggestion_clicked = True
             st.session_state.clicked_prompt = "What is Old Age Samman Allowance?"
         st.markdown('</div>', unsafe_allow_html=True)
