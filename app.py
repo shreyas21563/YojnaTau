@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import base64
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -6,6 +7,7 @@ from langchain.agents import initialize_agent, AgentType
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from streamlit_oauth import OAuth2Component
 from langdetect import detect
+from langchain_community.tools import TavilySearchResults
 
 def img_to_base64(image_path):
     with open(image_path, "rb") as img_file:
@@ -19,6 +21,8 @@ st.set_page_config(
 )  
 
 GEMINI_API_KEY = st.secrets["api_keys"]["GEMINI_API_KEY"]
+TAVILY_API_KEY = st.secrets["api_keys"]["TAVILY_API_KEY"]
+os.environ["TAVILY_API_KEY"] = TAVILY_API_KEY
 AUTHORIZATION_URL = st.secrets["google_auth"]["auth_uri"]
 TOKEN_URL = st.secrets["google_auth"]["token_uri"]
 CLIENT_ID = st.secrets["google_auth"]["client_id"]
@@ -274,6 +278,7 @@ if 'token' in st.session_state:
                 "2. Content: Provide accurate and up-to-date information about government schemes, eligibility criteria, benefits, required documents, application process, and relevant timelines. "
                 "3. Tone: Use simple, clear, and friendly language. "
                 "4. If unsure: Politely say you are unsure. Do not guess or make up information."
+                "5. You can use the search tool to find information. "
             )
         })
     if "suggestion_clicked" not in st.session_state:
@@ -299,7 +304,12 @@ if 'token' in st.session_state:
             max_retries=2,
             api_key=GEMINI_API_KEY
         )
-        search = DuckDuckGoSearchRun(name="Search")
+        search = TavilySearchResults(
+            max_results=5,
+            include_answer=True,
+            include_raw_content=True,
+            include_images=True,
+        )
         search_agent = initialize_agent(
             [search], llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, handle_parsing_errors=True
         )
