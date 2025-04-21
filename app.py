@@ -5,6 +5,7 @@ from langchain_community.tools import DuckDuckGoSearchRun
 from langchain.agents import initialize_agent, AgentType
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from streamlit_oauth import OAuth2Component
+from langdetect import detect
 
 def img_to_base64(image_path):
     with open(image_path, "rb") as img_file:
@@ -202,7 +203,7 @@ oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZATION_URL, TOKEN_URL,
 if 'token' not in st.session_state:
     with st.sidebar:
         result = oauth2.authorize_button(
-            "Sign in with Google",  # shorter, cleaner
+            "Sign in with Google",
             redirect_uri=REDIRECT_URI,
             scope=SCOPE,
             icon=(
@@ -220,7 +221,7 @@ if 'token' not in st.session_state:
             st.rerun()
 
 if 'token' in st.session_state:
-    # --- Show centered custom logout button
+    
     st.sidebar.markdown("""
         <style>
         .custom-logout-container {
@@ -259,64 +260,6 @@ if 'token' in st.session_state:
             </a>
         </div>
     """, unsafe_allow_html=True)
-# else:
-#     authorization_url = authenticator.get_authorization_url()
-#     st.sidebar.markdown(
-#     f'''
-#     <style>
-#     .google-btn-wrapper {{
-#         text-align: center;
-#     }}
-#     .google-btn {{
-#         display: inline-flex;
-#         align-items: center;
-#         justify-content: center;
-#         background: #ffffff;
-#         color: #555555 !important;  /* Force black text */
-#         border: 1px solid #ccc;
-#         border-radius: 24px;
-#         font-family: "Roboto", sans-serif;
-#         font-size: 16px;
-#         font-weight: 500;
-#         height: 48px;
-#         cursor: pointer;
-#         text-decoration: none !important;  /* Remove underline */
-#         transition: box-shadow 0.2s, transform 0.2s;
-#         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-#         padding: 0 12px;
-#         max-width: 250px;
-#     }}
-#     .google-btn:hover {{
-#         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-#         transform: translateY(-1px);
-#     }}
-#     .google-icon-wrapper {{
-#         margin-right: 8px;
-#         display: flex;
-#         align-items: center;
-#         justify-content: center;
-#         height: 36px;
-#         width: 36px;
-#         background: white;
-#         border-radius: 50%;
-#     }}
-#     .google-icon {{
-#         width: 18px;
-#         height: 18px;
-#     }}
-#     </style>
-
-#     <div class="google-btn-wrapper">
-#         <a class="google-btn" href="{authorization_url}" target="_self">
-#             <div class="google-icon-wrapper">
-#                 <img class="google-icon" src="https://developers.google.com/identity/images/g-logo.png" alt="Google logo">
-#             </div>
-#             <span style="color: black !important;">Sign in with Google</span>
-#         </a>
-#     </div>
-#     ''',
-#     unsafe_allow_html=True
-# )
 
 
 if 'token' in st.session_state:
@@ -329,10 +272,8 @@ if 'token' in st.session_state:
                 "Follow these instructions carefully: "
                 "1. Role: Answer as an expert in Haryana Government Schemes. "
                 "2. Content: Provide accurate and up-to-date information about government schemes, eligibility criteria, benefits, required documents, application process, and relevant timelines. "
-                "3. User Question: The user's last message is their query. "
-                "4. Language: Reply in the same language as the user's query: (Hindi, English). "
-                "5. Tone: Use simple, clear, and friendly language. "
-                "6. If unsure: Politely say you are unsure. Do not guess or make up information."
+                "3. Tone: Use simple, clear, and friendly language. "
+                "4. If unsure: Politely say you are unsure. Do not guess or make up information."
             )
         })
     if "suggestion_clicked" not in st.session_state:
@@ -346,6 +287,7 @@ if 'token' in st.session_state:
         st.markdown(f"<div class='{role_class}'>{msg['content']}</div>", unsafe_allow_html=True)
 
     def processing(prompt):
+        language = detect(prompt)
         st.session_state.messages.append({"role": "user", "content": prompt})
         role_class = f"chat-message user"
         st.markdown(f"<div class='{role_class}'>{prompt}</div>", unsafe_allow_html=True)
@@ -363,7 +305,16 @@ if 'token' in st.session_state:
         )
 
         st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
-        response = search_agent.run(st.session_state.messages, callbacks=[st_cb])
+        if language == "hi":
+            messages = st.session_state.messages.copy()
+            messages[-1]["content"] = f"{prompt}. Answer in Hindi."
+        elif language == "en":
+            messages = st.session_state.messages.copy()
+            messages[-1]["content"] = f"{prompt}. Answer in English."
+        else:
+            messages = st.session_state.messages.copy()
+            messages[-1]["content"] = f"{prompt}. Answer in Hinglish."
+        response = search_agent.run(messages, callbacks=[st_cb])
         st.session_state.messages.append({"role": "assistant", "content": response})
         role_class = f"chat-message assistant"
         st.markdown(f"<div class='{role_class}'>{response}</div>", unsafe_allow_html=True)
