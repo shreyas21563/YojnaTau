@@ -16,7 +16,7 @@ st.set_page_config(
     page_icon="img/logo.png",
     layout="wide",
     initial_sidebar_state="expanded",
-)
+)  
 
 GEMINI_API_KEY = st.secrets["api_keys"]["GEMINI_API_KEY"]
 AUTHORIZATION_URL = st.secrets["google_auth"]["auth_uri"]

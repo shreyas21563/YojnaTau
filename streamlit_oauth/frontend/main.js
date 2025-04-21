@@ -2,6 +2,7 @@ import { Streamlit } from "streamlit-component-lib"
 import "./style.css"
 
 const div = document.body.appendChild(document.createElement("div"))
+div.className = "center-container"
 const button = div.appendChild(document.createElement("button"))
 button.className = "google-btn"
 
