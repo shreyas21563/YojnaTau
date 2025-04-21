@@ -91,7 +91,6 @@ st-theme==1.2.3
 streamlit==1.44.1
 streamlit-google-auth==1.1.8
 streamlit-navigation-bar==3.3.0
-streamlit-oauth==0.1.14
 tenacity==9.1.2
 toml==0.10.2
 tornado==6.4.2
