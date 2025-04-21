@@ -5,7 +5,6 @@ from langchain_community.tools import DuckDuckGoSearchRun
 from langchain.agents import initialize_agent, AgentType
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from streamlit_oauth import OAuth2Component
-import authenticator as oauth
 from langdetect import detect
 
 def img_to_base64(image_path):
@@ -199,16 +198,29 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-# oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZATION_URL, TOKEN_URL, TOKEN_URL)
+oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZATION_URL, TOKEN_URL, TOKEN_URL)
 
-with st.sidebar:
-    login_info = oauth.login(
-        client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
-        redirect_uri=REDIRECT_URI
-    )
+if 'token' not in st.session_state:
+    with st.sidebar:
+        result = oauth2.authorize_button(
+            "Sign in with Google",
+            redirect_uri=REDIRECT_URI,
+            scope=SCOPE,
+            icon=(
+                "data:image/svg+xml;charset=utf-8,"
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E"
+                "%3Cpath fill='%23EA4335' d='M24 9.5c3.5 0 6.6 1.3 9 3.4l6.7-6.7C35.9 2.7 30.3 0 24 0 14.6 0 6.6 5.8 2.7 14.1l7.9 6.1C12.1 14 17.5 9.5 24 9.5z'/%3E"
+                "%3Cpath fill='%234285F4' d='M46.1 24.5c0-1.4-.1-2.7-.3-4H24v8h12.5c-.5 3.1-2.1 5.8-4.4 7.6l7.1 5.5c4.2-3.8 6.9-9.4 6.9-16.1z'/%3E"
+                "%3Cpath fill='%2334A853' d='M10.6 28.3c-.6-1.9-.9-3.9-.9-6s.3-4.1.9-6L2.7 14.1C.9 17.5 0 21.1 0 24.8s.9 7.3 2.7 10.7l7.9-6.2z'/%3E"
+                "%3Cpath fill='%23FBBC05' d='M24 48c6.3 0 11.5-2.1 15.3-5.6l-7.1-5.5c-2.1 1.4-4.7 2.3-8.2 2.3-6.5 0-12-4.5-14-10.5l-7.9 6.1C6.6 42.2 14.6 48 24 48z'/%3E"
+                "%3C/svg%3E"
+            )
+        )
+        if result:
+            st.session_state.token = result.get("token")
+            st.rerun()
 
-if login_info:
+if 'token' in st.session_state:
     
     st.sidebar.markdown("""
         <style>
@@ -228,10 +240,9 @@ if login_info:
             font-size: 16px;
             font-weight: bold;
             margin: 4px 2px;
-            border-radius: 8px;
+            border-radius: 12px;
             cursor: pointer;
             transition: background-color 0.3s ease;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
         }
         .custom-logout-btn:hover {
             background-color: #ff4020;
@@ -251,7 +262,7 @@ if login_info:
     """, unsafe_allow_html=True)
 
 
-if login_info:
+if 'token' in st.session_state:
     if "messages" not in st.session_state:
         st.session_state["messages"] = []
         st.session_state["messages"].append({
@@ -287,7 +298,7 @@ if login_info:
             timeout=None,
             max_retries=2,
             api_key=GEMINI_API_KEY
-        )   
+        )
         search = DuckDuckGoSearchRun(name="Search")
         search_agent = initialize_agent(
             [search], llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, handle_parsing_errors=True

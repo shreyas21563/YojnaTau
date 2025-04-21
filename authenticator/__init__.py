@@ -1,171 +1,159 @@
+# Thanks mkhorasani for his authentification package that I used to build this 
+# https://github.com/mkhorasani/Streamlit-Authenticator
+
+import os
+import time
 import streamlit as st
-import asyncio
-from httpx_oauth.clients.google import GoogleOAuth2
-import base64
-__version__ = "0.1"
+from typing import Literal
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+from .cookie import CookieHandler
 
-
-async def write_authorization_url(client, redirect_uri):
-    authorization_url = await client.get_authorization_url(
-        redirect_uri,
-        scope=["profile", "email"],
-        extras_params={"access_type": "offline"},
-    )
-    return authorization_url
-
-
-async def write_access_token(client, redirect_uri, code):
-    token = await client.get_access_token(code, redirect_uri)
-    return token
-
-
-async def get_user_info(client, token):
-    user_id, user_email = await client.get_id_email(token)
-    return user_id, user_email
-
-
-async def revoke_token(client, token):
-    return await client.revoke_token(token)
-
-def get_image_base64(image_path):
-    with open(image_path, "rb") as image_file:
-        encoded = base64.b64encode(image_file.read()).decode()
-    return encoded
-def login_button(authorization_url, app_name, app_desc):
-    image_path = "img/google_icon.png"  # Update this path to your image
-    image_base64 = get_image_base64(image_path)
-
-    button_html = f"""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap');
-
-    .center-container {{
-        display: flex;
-        justify-content: center;
-        margin-top: 20px;
-    }}
-
-    .center-container a {{
-        text-decoration: none !important;
-        color: #3c4043 !important; /* softer color */
-    }}
-
-    .google-btn {{
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background-color: white;
-        border: 1px solid #dadce0;
-        border-radius: 4px;
-        font-family: 'Roboto', sans-serif;
-        font-size: 14px;
-        font-weight: 500;
-        color: #3c4043 !important;
-        padding: 10px 15px;
-        transition: all 0.2s;
-        outline: none;
-        box-shadow: none;
-    }}
-
-    .google-btn:focus {{
-        outline: none !important;
-        box-shadow: none !important;
-    }}
-
-    .google-btn:hover {{
-        box-shadow: 0 1px 2px rgba(0,0,0,0.1),
-                    0 1px 3px rgba(0,0,0,0.2);
-        color: #3c4043 !important;
-    }}
-
-    .google-icon {{
-        height: 18px;
-        margin-right: 10px;
-    }}
-    </style>
-
-    <div class="center-container">
-        <p>
-            <a class="google-btn" href="{authorization_url}" target="_self">
-                <img class="google-icon" src="data:image/png;base64,{image_base64}" alt="Google logo">
-                Sign in with Google
-            </a>
-        </p>
-    </div>
-    """
-
-    # Render the button
-    st.markdown(button_html, unsafe_allow_html=True)
+class Authenticate:
+    def __init__(self, redirect_uri: str, cookie_name: str, cookie_key: str, cookie_expiry_days: float=30.0):
+        st.session_state['connected']   =   st.session_state.get('connected', False) 
+        self.redirect_uri               =   redirect_uri
+        self.cookie_handler             =   CookieHandler(cookie_name,
+                                                          cookie_key,
+                                                          cookie_expiry_days)
+        
+    def get_authorization_url(self) -> str:
+        client_config = {
+            "web": {
+                "client_id": st.secrets["google_auth"]["client_id"],
+                "project_id": st.secrets["google_auth"]["project_id"],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_secret": st.secrets["google_auth"]["client_secret"],
+                "redirect_uris": [
+                    self.redirect_uri,
+                ]
+            }
+        }
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=[
+                "openid",
+                "https://www.googleapis.com/auth/userinfo.profile",
+                "https://www.googleapis.com/auth/userinfo.email",
+            ],
+        )
+        flow.redirect_uri = self.redirect_uri
 
 
 
-
-
-
-
-
-
-
-def logout_button(button_text):
-    if st.button(button_text):
-        asyncio.run(
-            revoke_token(
-                client=st.session_state.client,
-                token=st.session_state.token["access_token"],
+        authorization_url, state = flow.authorization_url(
+                access_type="offline",
+                include_granted_scopes="true",
             )
-        )
-        st.session_state.user_email = None
-        st.session_state.user_id = None
-        st.session_state.token = None
-        st.rerun()
+        return authorization_url
 
+    def login(self, color:Literal['white', 'blue']='blue', justify_content: str="center", sidebar=False) -> tuple:
+        if not st.session_state['connected']:
+            client_config = {
+                "web": {
+                    "client_id": st.secrets["google_auth"]["client_id"],
+                    "project_id": st.secrets["google_auth"]["project_id"],
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                    "client_secret": st.secrets["google_auth"]["client_secret"],
+                    "redirect_uris": [
+                        self.redirect_uri,
+                    ]
+                }
+            }
+            flow = Flow.from_client_config(
+                client_config,
+                scopes=[
+                    "openid",
+                    "https://www.googleapis.com/auth/userinfo.profile",
+                    "https://www.googleapis.com/auth/userinfo.email",
+                ],
+            )
+            flow.redirect_uri = self.redirect_uri
 
-def login(
-    client_id,
-    client_secret,
-    redirect_uri,
-    app_name="Continue with Google",
-    app_desc="",
-    logout_button_text="Logout",
-):
-    st.session_state.client = GoogleOAuth2(client_id, client_secret)
-    authorization_url = asyncio.run(
-        write_authorization_url(
-            client=st.session_state.client, redirect_uri=redirect_uri
-        )
-    )
-    app_desc
-    if "token" not in st.session_state:
-        st.session_state.token = None
-
-    if st.session_state.token is None:
-        try:
-            code = st.query_params["code"]
-        except:
-            login_button(authorization_url, app_name, app_desc)
-        else:
-            try:
-                token = asyncio.run(
-                    write_access_token(
-                        client=st.session_state.client,
-                        redirect_uri=redirect_uri,
-                        code=code,
-                    )
+            authorization_url, state = flow.authorization_url(
+                    access_type="offline",
+                    include_granted_scopes="true",
                 )
-            except:
-                login_button(authorization_url, app_name, app_desc)
+            
+            html_content = f"""
+<div style="display: flex; justify-content: {justify_content};">
+    <a href="{authorization_url}" target="_self" style="background-color: {'#fff' if color == 'white' else '#4285f4'}; color: {'#000' if color == 'white' else '#fff'}; text-decoration: none; text-align: center; font-size: 16px; margin: 4px 2px; cursor: pointer; padding: 8px 12px; border-radius: 4px; display: flex; align-items: center;">
+        <img src="https://lh3.googleusercontent.com/COxitqgJr1sJnIDe8-jiKhxDx1FrYbtRHKJ9z_hELisAlapwE9LUPh6fcXIfb5vwpbMl4xl9H9TRFPc5NOO8Sb3VSgIBrfRYvW6cUA" alt="Google logo" style="margin-right: 8px; width: 26px; height: 26px; background-color: white; border: 2px solid white; border-radius: 4px;">
+        Sign in with Google
+    </a>
+</div>
+"""
+            if sidebar:
+                st.sidebar.markdown(html_content, unsafe_allow_html=True)
             else:
-                if token.is_expired():
-                    login_button(authorization_url, app_name, app_desc)
-                else:
-                    st.session_state.token = token
-                    st.session_state.user_id, st.session_state.user_email = asyncio.run(
-                        get_user_info(
-                            client=st.session_state.client, token=token["access_token"]
-                        )
+                st.markdown(html_content, unsafe_allow_html=True)
+
+    def check_authentification(self):
+        if not st.session_state['connected']:
+            token = self.cookie_handler.get_cookie()
+            if token:
+                user_info = {
+                    'name': token['name'],
+                    'email': token['email'],
+                    'picture': token['picture'],
+                    'id': token['oauth_id']
+                }
+                st.query_params.clear()
+                st.session_state["connected"] = True
+                st.session_state["user_info"] = user_info
+                st.session_state["oauth_id"] = user_info.get("id")
+                return
+            
+            time.sleep(0.3)
+            
+            if not st.session_state['connected']:
+                auth_code = st.query_params.get("code")
+                st.query_params.clear()
+                if auth_code:
+                    client_config = {
+                        "web": {
+                            "client_id": st.secrets["google_auth"]["client_id"],
+                            "project_id": st.secrets["google_auth"]["project_id"],
+                            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                            "token_uri": "https://oauth2.googleapis.com/token",
+                            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                            "client_secret": st.secrets["google_auth"]["client_secret"],
+                            "redirect_uris": [
+                                self.redirect_uri,
+                            ]
+                        }
+                    }
+                    flow = Flow.from_client_config(
+                        client_config,
+                        scopes=[
+                            "openid",
+                            "https://www.googleapis.com/auth/userinfo.profile",
+                            "https://www.googleapis.com/auth/userinfo.email",
+                        ],
                     )
-                    # logout_button(button_text=logout_button_text)
-                    return (st.session_state.user_id, st.session_state.user_email)
-    else:
-        # logout_button(button_text=logout_button_text)
-        return (st.session_state.user_id, st.session_state.user_email)
+                    flow.redirect_uri = self.redirect_uri
+                    flow.fetch_token(code=auth_code)
+                    credentials = flow.credentials
+                    user_info_service = build(
+                        serviceName="oauth2",
+                        version="v2",
+                        credentials=credentials,
+                    )
+                    user_info = user_info_service.userinfo().get().execute()
+
+                    st.session_state["connected"] = True
+                    st.session_state["oauth_id"] = user_info.get("id")
+                    st.session_state["user_info"] = user_info
+                    self.cookie_handler.set_cookie(user_info.get("name"), user_info.get("email"), user_info.get("picture"), user_info.get("id"))
+                    st.rerun()
+    
+    def logout(self):
+        st.session_state['logout'] = True
+        st.session_state['name'] = None
+        st.session_state['username'] = None
+        st.session_state['connected'] = None
+        self.cookie_handler.delete_cookie()
